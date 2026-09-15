@@ -1,16 +1,50 @@
-# FCG NotificationsAPI
+# FCG Notifications
 
-Microsservico responsavel por notificacoes simuladas por log no console.
+Repositorio responsavel por notificacoes simuladas por log no console.
+
+Na Fase 3, o fluxo principal foi migrado para uma funcao serverless acionada por mensagens RabbitMQ. A API HTTP foi mantida apenas como modo legado de validacao local.
 
 ## Responsabilidades
 
-- Receber `UserCreatedEvent` por endpoint local ou RabbitMQ/MassTransit.
+- Processar `UserCreatedEvent` por funcao serverless.
 - Log de e-mail de boas-vindas.
-- Receber `PaymentProcessedEvent` por endpoint local ou RabbitMQ/MassTransit.
+- Processar `PaymentProcessedEvent` por funcao serverless.
 - Log de e-mail de confirmacao de compra aprovada.
 - Ignorar pagamento rejeitado com resposta clara.
 
-## Execucao local
+## Funcao serverless
+
+Projeto:
+
+```text
+src/Fcg.Notifications.Function
+```
+
+Handler:
+
+```text
+Fcg.Notifications.Function::Fcg.Notifications.Function.NotificationFunction::HandleAsync
+```
+
+Infraestrutura como codigo:
+
+```text
+serverless/template.yaml
+```
+
+Simular evento de usuario criado:
+
+```powershell
+dotnet run --project src\Fcg.Notifications.Function -- --event samples\user-created-function-event.json
+```
+
+Simular evento de pagamento processado:
+
+```powershell
+dotnet run --project src\Fcg.Notifications.Function -- --event samples\payment-processed-function-event.json
+```
+
+## API HTTP legada para validacao local
 
 ```powershell
 dotnet restore
@@ -62,6 +96,14 @@ dotnet build --no-restore
 dotnet test --no-build --no-restore
 ```
 
+Validar explicitamente a funcao serverless:
+
+```powershell
+dotnet build src\Fcg.Notifications.Function\Fcg.Notifications.Function.csproj
+dotnet run --project src\Fcg.Notifications.Function -- --event samples\user-created-function-event.json
+dotnet run --project src\Fcg.Notifications.Function -- --event samples\payment-processed-function-event.json
+```
+
 ## Variaveis de ambiente
 
 - `ASPNETCORE_ENVIRONMENT`
@@ -72,13 +114,12 @@ dotnet test --no-build --no-restore
 - `RabbitMq__VirtualHost`
 - `RabbitMq__Username`
 - `RabbitMq__Password`
+ 
+Na funcao serverless, `RabbitMq__Enabled` deve ficar `false`, pois o trigger do provedor cloud entrega a mensagem diretamente para o handler.
 
 ## Mensageria
 
-- Exchange consumido: `fcg.user-created`
-- Fila consumidora: `notifications-user-created`
-- Exchange consumido: `fcg.payment-processed`
-- Fila consumidora: `notifications-payment-processed`
+- Fila esperada para usuario criado: `notifications-user-created`
+- Fila esperada para pagamento processado: `notifications-payment-processed`
 - Serializacao com broker: raw JSON, para interoperar com contratos duplicados entre repositorios.
-- Retry dos consumers: `3` tentativas com intervalo de `5` segundos.
-- Para usar RabbitMQ, configure `RabbitMq__Enabled=true`.
+- Retry e escala passam a ser responsabilidade do trigger serverless configurado em `serverless/template.yaml`.

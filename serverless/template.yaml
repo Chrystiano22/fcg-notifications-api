@@ -1,0 +1,66 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: FCG Notifications serverless function triggered by RabbitMQ messages.
+
+Parameters:
+  RabbitMqBrokerArn:
+    Type: String
+    Description: ARN of the Amazon MQ for RabbitMQ broker.
+  RabbitMqCredentialsSecretArn:
+    Type: String
+    Description: ARN of the AWS Secrets Manager secret with RabbitMQ username and password.
+  RabbitMqVirtualHost:
+    Type: String
+    Default: /
+  NotificationsFromEmail:
+    Type: String
+    Default: no-reply@fcg.local
+
+Resources:
+  NotificationsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: fcg-notifications-function
+      Runtime: dotnet8
+      Handler: Fcg.Notifications.Function::Fcg.Notifications.Function.NotificationFunction::HandleAsync
+      CodeUri: ../src/Fcg.Notifications.Function/
+      MemorySize: 256
+      Timeout: 30
+      Environment:
+        Variables:
+          Notifications__FromEmail: !Ref NotificationsFromEmail
+          RabbitMq__Enabled: "false"
+
+  UserCreatedEventSourceMapping:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      FunctionName: !GetAtt NotificationsFunction.Arn
+      EventSourceArn: !Ref RabbitMqBrokerArn
+      BatchSize: 10
+      Queues:
+        - notifications-user-created
+      SourceAccessConfigurations:
+        - Type: BASIC_AUTH
+          URI: !Ref RabbitMqCredentialsSecretArn
+        - Type: VIRTUAL_HOST
+          URI: !Ref RabbitMqVirtualHost
+
+  PaymentProcessedEventSourceMapping:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      FunctionName: !GetAtt NotificationsFunction.Arn
+      EventSourceArn: !Ref RabbitMqBrokerArn
+      BatchSize: 10
+      Queues:
+        - notifications-payment-processed
+      SourceAccessConfigurations:
+        - Type: BASIC_AUTH
+          URI: !Ref RabbitMqCredentialsSecretArn
+        - Type: VIRTUAL_HOST
+          URI: !Ref RabbitMqVirtualHost
+
+Outputs:
+  NotificationsFunctionName:
+    Value: !Ref NotificationsFunction
+  NotificationsFunctionArn:
+    Value: !GetAtt NotificationsFunction.Arn
